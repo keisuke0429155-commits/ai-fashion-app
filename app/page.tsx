@@ -45,12 +45,18 @@ export default function Home() {
 
   // ── mount: localStorage からプロフィール・骨格タイプを復元 ──────────────
   useEffect(() => {
-    // 保存済みプロフィール
+    // 保存済みプロフィール（空配列でデフォルトを上書きしないよう防御マージ）
     const savedProfile = localStorage.getItem('ai_stylist_profile')
     if (savedProfile) {
       try {
         const parsed = JSON.parse(savedProfile)
-        setProfile((p) => ({ ...p, ...parsed }))
+        setProfile((p) => ({
+          ...p,
+          ...parsed,
+          styles:  parsed.styles?.length  > 0 ? parsed.styles  : p.styles,
+          occasion: parsed.occasion?.length > 0 ? parsed.occasion : p.occasion,
+          colors:  parsed.colors?.length  > 0 ? parsed.colors  : p.colors,
+        }))
       } catch {}
     }
     // 骨格タイプ
@@ -81,7 +87,13 @@ export default function Home() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) {
-          setProfile((p) => ({ ...p, ...data }))
+          setProfile((p) => ({
+            ...p,
+            ...data,
+            styles:  data.styles?.length  > 0 ? data.styles  : p.styles,
+            occasion: data.occasion?.length > 0 ? data.occasion : p.occasion,
+            colors:  data.colors?.length  > 0 ? data.colors  : p.colors,
+          }))
           localStorage.setItem('ai_stylist_profile', JSON.stringify(data))
         }
       })
@@ -121,7 +133,7 @@ export default function Home() {
     setError(null)
     setStep('loading')
     try {
-      const body = {
+      const reqBody = {
         profile,
         wardrobeItems: profile.useWardrobe ? wardrobe.items : [],
         weatherData: profile.useWeather ? weatherData : null,
@@ -129,13 +141,31 @@ export default function Home() {
       const res = await fetch('/api/generate-outfits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(reqBody),
       })
       if (!res.ok) {
-        const d = await res.json()
-        throw new Error(d.error || 'エラーが発生しました')
+        const d = await res.json().catch(() => ({}))
+        throw new Error((d as { error?: string }).error || 'エラーが発生しました')
       }
-      setPlan(await res.json())
+
+      // ストリーミングレスポンスを読み込む
+      if (!res.body) throw new Error('レスポンスが空です')
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+      let text = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        text += decoder.decode(value, { stream: true })
+      }
+      text += decoder.decode()
+
+      // JSON 部分を抽出してパース
+      const start = text.indexOf('{')
+      const end   = text.lastIndexOf('}')
+      if (start === -1 || end === -1) throw new Error('レスポンスの形式が不正です')
+      const plan: WeeklyOutfitPlan = JSON.parse(text.slice(start, end + 1))
+      setPlan(plan)
       setStep('result')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'エラーが発生しました')
@@ -201,22 +231,13 @@ export default function Home() {
 
       {/* ── Mobile sticky CTA ── */}
       <div className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-white border-t border-gray-200 px-4 py-3 safe-area-pb">
-        {session ? (
-          <button
-            onClick={handleGenerate}
-            disabled={!isValid}
-            className="w-full py-4 btn-primary text-[11px] disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            {isValid ? '✦  Generate My Style  ✦' : 'スタイル・シーンを選択してください'}
-          </button>
-        ) : (
-          <button
-            onClick={() => setShowLogin(true)}
-            className="w-full py-4 btn-primary text-[11px]"
-          >
-            ✦  ログインして開始  ✦
-          </button>
-        )}
+        <button
+          onClick={handleGenerate}
+          disabled={!isValid}
+          className="w-full py-4 btn-primary text-[11px] disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          {isValid ? '✦  Generate My Style  ✦' : 'スタイル・シーンを選択してください'}
+        </button>
         {profile.useWardrobe && wardrobe.items.length > 0 && (
           <p className="text-[10px] text-emerald-600 text-center mt-1.5 font-medium">
             クロゼットの {wardrobe.items.length} 点を組み込みます
@@ -399,21 +420,17 @@ export default function Home() {
               </div>
 
               {/* CTA */}
-              {session ? (
-                <button
-                  onClick={handleGenerate}
-                  disabled={!isValid}
-                  className="w-full py-5 btn-primary text-[11px]"
-                >
-                  {isValid ? '✦  Generate My Style  ✦' : 'スタイル・シーンを選択'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowLogin(true)}
-                  className="w-full py-5 btn-primary text-[11px]"
-                >
-                  ✦  ログインして開始  ✦
-                </button>
+              <button
+                onClick={handleGenerate}
+                disabled={!isValid}
+                className="w-full py-5 btn-primary text-[11px] disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {isValid ? '✦  Generate My Style  ✦' : 'スタイル・シーンを選択'}
+              </button>
+              {!session && isValid && (
+                <p className="text-[10px] text-gray-400 text-center -mt-1">
+                  <button onClick={() => setShowLogin(true)} className="underline hover:text-black">ログイン</button>するとコーデを保存できます
+                </p>
               )}
               {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
 
