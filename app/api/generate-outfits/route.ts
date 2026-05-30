@@ -138,14 +138,21 @@ ${weatherSection}
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 5000,
-      system: 'ファッションスタイリストとしてJSONのみを出力。マークダウン不要。',
+      max_tokens: 8192,
+      system: 'ファッションスタイリストとしてJSONのみを出力。マークダウン・前後説明文は一切不要。',
       messages: [{ role: 'user', content: prompt }],
     })
 
     const raw = message.content[0]
     if (raw.type !== 'text') throw new Error('Unexpected response')
+
+    // コードフェンス除去 → 最初の { から最後の } を抽出してパース
     let text = raw.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+    const start = text.indexOf('{')
+    const end   = text.lastIndexOf('}')
+    if (start === -1 || end === -1) throw new Error('JSON not found in response')
+    text = text.slice(start, end + 1)
+
     const plan: WeeklyOutfitPlan = JSON.parse(text)
     return NextResponse.json(plan)
   } catch (err) {

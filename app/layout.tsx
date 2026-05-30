@@ -59,13 +59,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
             {/* Desktop Nav */}
             <nav className="hidden md:flex items-center gap-8">
-              {['Men', 'Women', 'Unisex', 'New In'].map((item) => (
-                <span
-                  key={item}
-                  className="text-[11px] tracking-widest uppercase text-gray-400 hover:text-black transition-colors cursor-pointer"
+              {[
+                { label: 'Men',    href: '/?gender=male' },
+                { label: 'Women',  href: '/?gender=female' },
+                { label: 'Unisex', href: '/?gender=unisex' },
+                { label: 'New In', href: '/store' },
+              ].map(({ label, href }) => (
+                <a
+                  key={label}
+                  href={href}
+                  className="text-[11px] tracking-widest uppercase text-gray-400 hover:text-black transition-colors"
                 >
-                  {item}
-                </span>
+                  {label}
+                </a>
               ))}
               <a
                 href="/skeletal"
@@ -114,15 +120,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </p>
             </div>
             {[
-              { title: 'Service', links: ['スタイル診断', 'コーデ提案', 'ブランド一覧'] },
-              { title: 'Style', links: ['メンズ', 'レディース', 'ユニセックス'] },
-              { title: 'Info', links: ['使い方', 'プライバシー', 'お問い合わせ'] },
+              { title: 'Service', links: [
+                { label: 'スタイル診断', href: '/skeletal' },
+                { label: 'コーデ提案',  href: '/' },
+                { label: 'ブランド一覧', href: '/store' },
+              ]},
+              { title: 'Style', links: [
+                { label: 'メンズ',      href: '/?gender=male' },
+                { label: 'レディース',  href: '/?gender=female' },
+                { label: 'ユニセックス', href: '/?gender=unisex' },
+              ]},
+              { title: 'Info', links: [
+                { label: '使い方',      href: '/#how-to' },
+                { label: 'プライバシー', href: '/privacy' },
+                { label: 'お問い合わせ', href: 'mailto:keisuke0429155@gmail.com' },
+              ]},
             ].map(({ title, links }) => (
               <div key={title}>
                 <p className="text-[10px] tracking-[0.25em] uppercase font-bold mb-4">{title}</p>
                 <ul className="space-y-2">
-                  {links.map((l) => (
-                    <li key={l} className="text-xs text-gray-400 hover:text-white transition-colors cursor-pointer">{l}</li>
+                  {links.map(({ label, href }) => (
+                    <li key={label}>
+                      <a href={href} className="text-xs text-gray-400 hover:text-white transition-colors">{label}</a>
+                    </li>
                   ))}
                 </ul>
               </div>

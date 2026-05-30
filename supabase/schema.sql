@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   email         TEXT        UNIQUE NOT NULL,
   name          TEXT        NOT NULL DEFAULT '',
   password_hash TEXT        NOT NULL DEFAULT '',
+  profile       JSONB,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

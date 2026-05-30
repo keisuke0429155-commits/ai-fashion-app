@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import LoginModal from '@/components/LoginModal'
 import UserInfoForm from '@/components/UserInfoForm'
@@ -32,26 +32,87 @@ type Step = 'input' | 'loading' | 'result'
 
 export default function Home() {
   const { data: session } = useSession()
-  const [step, setStep]         = useState<Step>('input')
-  const [profile, setProfile]   = useState<UserProfile>(defaultProfile)
-  const [plan, setPlan]         = useState<WeeklyOutfitPlan | null>(null)
-  const [error, setError]       = useState<string | null>(null)
+  const [step, setStep]           = useState<Step>('input')
+  const [profile, setProfile]     = useState<UserProfile>(defaultProfile)
+  const [plan, setPlan]           = useState<WeeklyOutfitPlan | null>(null)
+  const [error, setError]         = useState<string | null>(null)
   const [weatherData, setWeather] = useState<WeatherData | null>(null)
   const [showLogin, setShowLogin] = useState(false)
   const [bodyFrameType, setBodyFrameType] = useState<BodyFrameType | null>(null)
-  const wardrobe                = useWardrobe()
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const profileFetchedRef         = useRef(false)
+  const wardrobe                  = useWardrobe()
 
+  // ── mount: localStorage からプロフィール・骨格タイプを復元 ──────────────
   useEffect(() => {
-    const stored = localStorage.getItem('ai_stylist_body_frame_type') as BodyFrameType | null
-    if (stored) {
-      setBodyFrameType(stored)
-      setProfile((p) => ({ ...p, bodyFrameType: stored }))
+    // 保存済みプロフィール
+    const savedProfile = localStorage.getItem('ai_stylist_profile')
+    if (savedProfile) {
+      try {
+        const parsed = JSON.parse(savedProfile)
+        setProfile((p) => ({ ...p, ...parsed }))
+      } catch {}
+    }
+    // 骨格タイプ
+    const storedFrame = localStorage.getItem('ai_stylist_body_frame_type') as BodyFrameType | null
+    if (storedFrame) {
+      setBodyFrameType(storedFrame)
+      setProfile((p) => ({ ...p, bodyFrameType: storedFrame }))
+    }
+    // URL パラメータから性別を設定
+    const params = new URLSearchParams(window.location.search)
+    const gender = params.get('gender')
+    if (gender === 'male' || gender === 'female' || gender === 'unisex') {
+      setProfile((p) => ({ ...p, gender }))
+      setTimeout(() => {
+        document.getElementById('style-form')?.scrollIntoView({ behavior: 'smooth' })
+      }, 200)
     }
     // MobileNav からのログインイベント
     const handler = () => setShowLogin(true)
     window.addEventListener('show-login', handler)
     return () => window.removeEventListener('show-login', handler)
   }, [])
+
+  // ── ログイン時: Supabase からプロフィールを読み込み ─────────────────────
+  useEffect(() => {
+    if (!session?.user?.email) return
+    fetch('/api/profile')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) {
+          setProfile((p) => ({ ...p, ...data }))
+          localStorage.setItem('ai_stylist_profile', JSON.stringify(data))
+        }
+      })
+      .catch(() => {})
+      .finally(() => { profileFetchedRef.current = true })
+  }, [session?.user?.email])
+
+  // ── プロフィール変更: localStorage に即時保存 + Supabase に遅延保存 ─────
+  useEffect(() => {
+    // ephemeral なフィールドは除外して保存
+    const { useWeather, selectedTrends, ...toSave } = profile
+    localStorage.setItem('ai_stylist_profile', JSON.stringify(toSave))
+
+    if (!session || !profileFetchedRef.current) return
+    setSaveStatus('saving')
+    const timer = setTimeout(async () => {
+      try {
+        await fetch('/api/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(toSave),
+        })
+        setSaveStatus('saved')
+        setTimeout(() => setSaveStatus('idle'), 2000)
+      } catch {
+        setSaveStatus('idle')
+      }
+    }, 1500)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile])
 
   const isValid = profile.styles.length > 0 && profile.occasion.length > 0 && !!profile.age && !!profile.height
 
@@ -164,7 +225,7 @@ export default function Home() {
       </div>
 
       {/* ── Form + Sidebar ── */}
-      <div className="max-w-7xl mx-auto px-5 md:px-8 py-12 pb-28 lg:pb-12">
+      <div id="style-form" className="max-w-7xl mx-auto px-5 md:px-8 py-12 pb-28 lg:pb-12">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 xl:gap-16">
 
           {/* Main column */}
@@ -218,7 +279,14 @@ export default function Home() {
 
               {/* Summary card */}
               <div className="border-2 border-black p-5 space-y-4">
-                <p className="section-label">Your Profile</p>
+                <div className="flex items-center justify-between">
+                  <p className="section-label">Your Profile</p>
+                  {session && saveStatus !== 'idle' && (
+                    <span className={`text-[10px] tracking-wider transition-all ${saveStatus === 'saved' ? 'text-emerald-500' : 'text-gray-400'}`}>
+                      {saveStatus === 'saving' ? '保存中…' : '✓ 保存済み'}
+                    </span>
+                  )}
+                </div>
                 <div className="space-y-2.5">
                   {[
                     ['Gender', profile.gender === 'male' ? 'Men' : profile.gender === 'female' ? 'Women' : 'Unisex'],
