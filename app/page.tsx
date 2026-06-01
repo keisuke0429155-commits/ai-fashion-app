@@ -9,6 +9,7 @@ import TrendSection from '@/components/TrendSection'
 import WeatherWidget from '@/components/WeatherWidget'
 import WeeklyOutfitResult from '@/components/WeeklyOutfitResult'
 import LoadingScreen from '@/components/LoadingScreen'
+import FullBodyPhotoSection, { BodyPhoto } from '@/components/FullBodyPhotoSection'
 import { UserProfile, WeeklyOutfitPlan, BodyFrameType } from '@/types'
 import { useWardrobe } from '@/lib/useWardrobe'
 import { WeatherData } from '@/lib/weather'
@@ -40,11 +41,17 @@ export default function Home() {
   const [showLogin, setShowLogin] = useState(false)
   const [bodyFrameType, setBodyFrameType] = useState<BodyFrameType | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const profileFetchedRef         = useRef(false)
-  const wardrobe                  = useWardrobe()
+  const [bodyPhoto, setBodyPhoto]   = useState<BodyPhoto | null>(null)
+  const profileFetchedRef           = useRef(false)
+  const wardrobe                    = useWardrobe()
 
   // ── mount: localStorage からプロフィール・骨格タイプを復元 ──────────────
   useEffect(() => {
+    // 全身写真
+    const savedPhoto = localStorage.getItem('ai_stylist_body_photo')
+    if (savedPhoto) {
+      try { setBodyPhoto(JSON.parse(savedPhoto)) } catch {}
+    }
     // 保存済みプロフィール（空配列でデフォルトを上書きしないよう防御マージ）
     const savedProfile = localStorage.getItem('ai_stylist_profile')
     if (savedProfile) {
@@ -137,6 +144,7 @@ export default function Home() {
         profile,
         wardrobeItems: profile.useWardrobe ? wardrobe.items : [],
         weatherData: profile.useWeather ? weatherData : null,
+        bodyPhoto,
       }
       const res = await fetch('/api/generate-outfits', {
         method: 'POST',
@@ -277,6 +285,12 @@ export default function Home() {
               />
             )}
 
+            {/* Full body photo */}
+            <FullBodyPhotoSection
+              photo={bodyPhoto}
+              onPhotoChange={setBodyPhoto}
+            />
+
             {/* Profile form */}
             <UserInfoForm profile={profile} onChange={setProfile} />
           </div>
@@ -391,6 +405,25 @@ export default function Home() {
                   </div>
                 )}
               </div>
+
+              {/* Body photo status */}
+              {bodyPhoto && (
+                <div className="border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3">
+                  <div className="w-10 h-14 border border-emerald-200 overflow-hidden shrink-0">
+                    <img
+                      src={`data:${bodyPhoto.mediaType};base64,${bodyPhoto.data}`}
+                      alt="全身写真"
+                      className="w-full h-full object-cover object-top"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black tracking-widest uppercase text-emerald-700">Photo Linked</p>
+                    <p className="text-[11px] text-emerald-600 mt-0.5">
+                      体型・肌トーンを AI が反映
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Body frame type */}
               <div className="border border-gray-200 p-4">

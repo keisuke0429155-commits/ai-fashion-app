@@ -10,11 +10,14 @@ export const maxDuration = 300
 const USE_MOCK = !process.env.ANTHROPIC_API_KEY ||
   process.env.ANTHROPIC_API_KEY === 'your_api_key_here'
 
+type BodyPhoto = { data: string; mediaType: string }
+
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const profile: UserProfile = body.profile ?? body
   const wardrobeItems: WardrobeItem[] = body.wardrobeItems ?? []
   const weatherData: WeatherData | null = body.weatherData ?? null
+  const bodyPhoto: BodyPhoto | null = body.bodyPhoto ?? null
   const useWardrobeItems = profile.useWardrobe && wardrobeItems.length > 0
   const useWeatherData = profile.useWeather && !!weatherData
   const selectedTrendIds: string[] = profile.selectedTrends ?? []
@@ -109,11 +112,42 @@ ${wardrobeSection}${weatherSection}
 - JSONのみ出力・前後説明文不要`
 
     // ストリーミングで返す（Vercel タイムアウト回避）
+    // 全身写真がある場合はマルチモーダルメッセージを使用
+    const userMessage = bodyPhoto
+      ? {
+          role: 'user' as const,
+          content: [
+            {
+              type: 'image' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: bodyPhoto.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+                data: bodyPhoto.data,
+              },
+            },
+            {
+              type: 'text' as const,
+              text: `上記はユーザーの全身写真です。この写真から以下を把握してコーデ提案に反映してください：
+- 体型・プロポーション（肩幅、ウエスト、脚の長さなど）
+- 肌トーン（どんな色が映えるか）
+- 体の印象・雰囲気
+- 特に似合いそうなシルエット・フィット感
+
+${prompt}`,
+            },
+          ],
+        }
+      : { role: 'user' as const, content: prompt }
+
+    const systemPrompt = bodyPhoto
+      ? 'ファッションスタイリストとしてJSONのみを出力。マークダウン・前後説明文は一切不要。提供された全身写真を必ず参照し、その人物の体型・肌トーン・プロポーションに最適化されたコーデを提案すること。'
+      : 'ファッションスタイリストとしてJSONのみを出力。マークダウン・前後説明文は一切不要。'
+
     const stream = client.messages.stream({
       model: 'claude-sonnet-4-6',
       max_tokens: 8192,
-      system: 'ファッションスタイリストとしてJSONのみを出力。マークダウン・前後説明文は一切不要。',
-      messages: [{ role: 'user', content: prompt }],
+      system: systemPrompt,
+      messages: [userMessage],
     })
 
     const encoder = new TextEncoder()
